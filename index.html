@@ -1,0 +1,347 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PWHL Entry Draft Simulator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+  <div class="container mx-auto p-4 max-w-6xl">
+    <!-- Header -->
+    <h1 class="text-3xl font-bold text-center mb-6">PWHL Entry Draft Simulator 2025</h1>
+    <p class="text-center mb-4">Simulate the 2025 PWHL Entry Draft for 8 teams over 6 rounds. Upload a CSV of eligible players, select picks, and export the results.</p>
+
+    <!-- CSV Upload -->
+    <div class="mb-6">
+      <label class="block text-lg font-semibold mb-2">Upload Player CSV</label>
+      <input type="file" id="csvFile" accept=".csv" class="block w-full text-sm text-gray-500
+        file:mr-4 file:py-2 file:px-4 file:rounded file:border-0
+        file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700
+        hover:file:bg-blue-100">
+      <p class="text-sm text-gray-600 mt-2">Required columns: Full Name, Pos, Previous Team, Nationality, Overall, Potential. Optional: Goals, Assists, Points, Save %, Shutouts.</p>
+      <p class="text-sm text-gray-600">Example: <a href="#sample-csv" class="text-blue-500 underline">Download sample CSV</a></p>
+    </div>
+
+    <!-- Draft Controls -->
+    <div class="mb-6 flex flex-wrap gap-4 items-center">
+      <div>
+        <span class="font-semibold">Current Pick: </span>
+        <span id="currentPick" class="text-blue-600">Round 1, Pick 1 (New York)</span>
+      </div>
+      <button id="resetDraft" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">Reset Draft</button>
+      <button id="exportDraft" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" disabled>Export Draft Results</button>
+    </div>
+
+    <!-- Player List -->
+    <div class="mb-6">
+      <h2 class="text-xl font-semibold mb-2">Available Players</h2>
+      <div class="mb-4 flex gap-4">
+        <select id="positionFilter" class="border rounded px-2 py-1">
+          <option value="">All Positions</option>
+          <option value="Forward">Forward</option>
+          <option value="Defender">Defender</option>
+          <option value="Goaltender">Goaltender</option>
+        </select>
+      </div>
+      <div class="overflow-x-auto">
+        <table id="playerTable" class="w-full bg-white shadow rounded">
+          <thead>
+            <tr class="bg-gray-200">
+              <th class="p-2 cursor-pointer" data-sort="Full Name">Full Name</th>
+              <th class="p-2 cursor-pointer" data-sort="Pos">Pos</th>
+              <th class="p-2 cursor-pointer" data-sort="Previous Team">Previous Team</th>
+              <th class="p-2 cursor-pointer" data-sort="Nationality">Nationality</th>
+              <th class="p-2 cursor-pointer" data-sort="Overall">Overall</th>
+              <th class="p-2 cursor-pointer" data-sort="Potential">Potential</th>
+              <th class="p-2">Action</th>
+            </tr>
+          </thead>
+          <tbody id="playerTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Team Rosters -->
+    <div class="mb-6">
+      <h2 class="text-xl font-semibold mb-2">Team Rosters</h2>
+      <div id="teamRosters" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+    </div>
+
+    <!-- Draft History -->
+    <div>
+      <h2 class="text-xl font-semibold mb-2">Draft History</h2>
+      <ul id="draftHistory" class="bg-white p-4 rounded shadow"></ul>
+    </div>
+  </div>
+
+  <script>
+    // Draft state
+    let players = [];
+    let draftOrder = [
+      { team: 'New York', picks: [] },
+      { team: 'Ottawa', picks: [] },
+      { team: 'Minnesota', picks: [] },
+      { team: 'Boston', picks: [] },
+      { team: 'Montreal', picks: [] },
+      { team: 'Toronto', picks: [] },
+      { team: 'Seattle', picks: [] },
+      { team: 'Vancouver', picks: [] }
+    ];
+    let currentRound = 1;
+    let currentPick = 1;
+    let sortColumn = 'Overall';
+    let sortDirection = -1;
+    let csvColumns = [];
+
+    // Initialize
+    updateCurrentPick();
+    renderTeamRosters();
+
+    // CSV Upload
+    document.getElementById('csvFile').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      Papa.parse(file, {
+        header: true,
+        complete: (result) => {
+          const requiredColumns = ['Full Name', 'Pos', 'Previous Team', 'Nationality', 'Overall', 'Potential'];
+          const hasRequiredColumns = requiredColumns.every(col => result.meta.fields.includes(col));
+          if (!hasRequiredColumns) {
+            alert('CSV must include columns: ' + requiredColumns.join(', '));
+            return;
+          }
+
+          csvColumns = result.meta.fields;
+          players = result.data.map(player => ({
+            ...player,
+            Overall: parseInt(player.Overall) || 0,
+            Potential: parseInt(player.Potential) || 0,
+            Goals: parseInt(player.Goals) || 0,
+            Assists: parseInt(player.Assists) || 0,
+            Points: parseInt(player.Points) || 0,
+            'Save %': parseFloat(player['Save %']) || 0,
+            Shutouts: parseInt(player.Shutouts) || 0
+          }));
+          renderPlayerTable();
+        },
+        error: (error) => {
+          alert('Error parsing CSV: ' + error.message);
+        }
+      });
+    });
+
+    // Position Filter
+    document.getElementById('positionFilter').addEventListener('change', () => {
+      renderPlayerTable();
+    });
+
+    // Table Sorting
+    document.querySelectorAll('#playerTable th[data-sort]').forEach(th => {
+      th.addEventListener('click', () => {
+        const column = th.dataset.sort;
+        if (column === sortColumn) {
+          sortDirection *= -1;
+        } else {
+          sortColumn = column;
+          sortDirection = -1;
+        }
+        renderPlayerTable();
+      });
+    });
+
+    // Reset Draft
+    document.getElementById('resetDraft').addEventListener('click', () => {
+      if (confirm('Reset the draft? All picks will be cleared.')) {
+        draftOrder.forEach(team => (team.picks = []));
+        currentRound = 1;
+        currentPick = 1;
+        updateCurrentPick();
+        renderTeamRosters();
+        renderPlayerTable();
+        document.getElementById('draftHistory').innerHTML = '';
+        document.getElementById('exportDraft').disabled = true;
+      }
+    });
+
+    // Export Draft
+    document.getElementById('exportDraft').addEventListener('click', () => {
+      const totalPicks = draftOrder.reduce((sum, team) => sum + team.picks.length, 0);
+      if (totalPicks === 0) {
+        alert('No players have been drafted yet.');
+        return;
+      }
+
+      const rows = [];
+      let pickNumber = 0;
+      draftOrder.forEach(team => {
+        team.picks.forEach(player => {
+          pickNumber++;
+          const round = Math.floor((pickNumber - 1) / 8) + 1;
+          const row = {
+            Team: team.team,
+            Round: round,
+            Pick: pickNumber,
+            DraftStatus: pickNumber === 48 ? 'Complete' : 'Incomplete',
+            ...player
+          };
+          rows.push(row);
+        });
+      });
+
+      const csv = Papa.unparse(rows, { columns: ['Team', 'Round', 'Pick', 'DraftStatus', ...csvColumns] });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'pwhl_entry_draft_results.csv';
+      link.click();
+    });
+
+    // Render Player Table
+    function renderPlayerTable() {
+      const positionFilter = document.getElementById('positionFilter').value;
+      const availablePlayers = players.filter(player => {
+        const isAvailable = !draftOrder.some(team => team.picks.includes(player));
+        const matchesPosition = !positionFilter || player.Pos === positionFilter;
+        return isAvailable && matchesPosition;
+      });
+
+      availablePlayers.sort((a, b) => {
+        const aValue = a[sortColumn];
+        const bValue = b[sortColumn];
+        if (typeof aValue === 'string') {
+          return sortDirection * aValue.localeCompare(bValue);
+        }
+        return sortDirection * (bValue - aValue);
+      });
+
+      const tbody = document.getElementById('playerTableBody');
+      tbody.innerHTML = '';
+      availablePlayers.forEach(player => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-t';
+        tr.innerHTML = `
+          <td class="p-2 relative group">
+            ${player['Full Name']}
+            <div class="absolute hidden group-hover:block bg-gray-800 text-white text-xs rounded p-2 z-10">
+              Goals: ${player.Goals || 'N/A'}<br>
+              Assists: ${player.Assists || 'N/A'}<br>
+              Points: ${player.Points || 'N/A'}<br>
+              Save %: ${player['Save %'] || 'N/A'}<br>
+              Shutouts: ${player.Shutouts || 'N/A'}
+            </div>
+          </td>
+          <td class="p-2">${player.Pos}</td>
+          <td class="p-2">${player['Previous Team']}</td>
+          <td class="p-2">${player.Nationality}</td>
+          <td class="p-2">${player.Overall}</td>
+          <td class="p-2">${player.Potential}</td>
+          <td class="p-2">
+            <button class="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 select-player" data-name="${player['Full Name']}">Select</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      // Add Select Player Events
+      document.querySelectorAll('.select-player').forEach(button => {
+        button.addEventListener('click', () => {
+          const playerName = button.dataset.name;
+          const player = players.find(p => p['Full Name'] === playerName);
+          const teamIndex = (currentPick - 1) % 8;
+          const team = draftOrder[teamIndex];
+
+          team.picks.push(player);
+          document.getElementById('exportDraft').disabled = false;
+
+          // Update Draft History
+          const pickNumber = currentPick;
+          const round = Math.ceil(pickNumber / 8);
+          const historyItem = document.createElement('li');
+          historyItem.textContent = `Round ${round}, Pick ${pickNumber}: ${team.team} selects ${player['Full Name']} (${player.Pos})`;
+          document.getElementById('draftHistory').prepend(historyItem);
+
+          // Advance Pick
+          currentPick++;
+          if (currentPick > 48) {
+            alert('Draft complete!');
+            document.querySelectorAll('.select-player').forEach(btn => btn.disabled = true);
+          } else {
+            updateCurrentPick();
+          }
+
+          renderPlayerTable();
+          renderTeamRosters();
+        });
+      });
+    }
+
+    // Update Current Pick Display
+    function updateCurrentPick() {
+      const pickNumber = currentPick;
+      const round = Math.ceil(pickNumber / 8);
+      const teamIndex = (pickNumber - 1) % 8;
+      const team = draftOrder[teamIndex].team;
+      document.getElementById('currentPick').textContent = `Round ${round}, Pick ${pickNumber} (${team})`;
+    }
+
+    // Render Team Rosters
+    function renderTeamRosters() {
+      const container = document.getElementById('teamRosters');
+      container.innerHTML = '';
+      draftOrder.forEach(team => {
+        const div = document.createElement('div');
+        div.className = 'bg-white p-4 rounded shadow';
+        div.innerHTML = `
+          <h3 class="text-lg font-semibold mb-2">${team.team}</h3>
+          <ul class="list-disc pl-5">
+            ${team.picks.length ? team.picks.map(player => `<li>${player['Full Name']} (${player.Pos})</li>`).join('') : '<li>No players drafted yet</li>'}
+          </ul>
+        `;
+        container.appendChild(div);
+      });
+    }
+  </script>
+</body>
+</html>
