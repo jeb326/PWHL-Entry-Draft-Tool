@@ -59,7 +59,7 @@
         file:mr-4 file:py-2 file:px-4 file:rounded file:border-0
         file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700
         hover:file:bg-blue-100">
-      <p class="text-sm text-gray-600 mt-2">Required columns: Full Name, Pos, Previous Team, Nationality, Overall, Potential. Optional: Goals, Assists, Points, Save %, Shutouts.</p>
+      <p class="text-sm text-gray-600 mt-2">Required columns: Full Name, Pos, Previous Team, Nationality, Average Draft Ranking, Previous League. Optional: Goals, Assists, Points, Save %, Shutouts.</p>
     </div>
 
     <!-- Draft Controls -->
@@ -91,8 +91,8 @@
               <th class="p-2 cursor-pointer" data-sort="Pos">Pos</th>
               <th class="p-2 cursor-pointer" data-sort="Previous Team">Previous Team</th>
               <th class="p-2 cursor-pointer" data-sort="Nationality">Nationality</th>
-              <th class="p-2 cursor-pointer" data-sort="Overall">Overall</th>
-              <th class="p-2 cursor-pointer" data-sort="Potential">Potential</th>
+              <th class="p-2 cursor-pointer" data-sort="Average Draft Ranking">Average Draft Ranking</th>
+              <th class="p-2 cursor-pointer" data-sort="Previous League">Previous League</th>
               <th class="p-2">Action</th>
             </tr>
           </thead>
@@ -129,8 +129,8 @@
     ];
     let currentRound = 1;
     let currentPick = 1;
-    let sortColumn = 'Overall';
-    let sortDirection = -1;
+    let sortColumn = 'Average Draft Ranking';
+    let sortDirection = 1; // Ascending for lower rankings first
     let csvColumns = [];
 
     // Initialize
@@ -145,7 +145,7 @@
       Papa.parse(file, {
         header: true,
         complete: (result) => {
-          const requiredColumns = ['Full Name', 'Pos', 'Previous Team', 'Nationality', 'Overall', 'Potential'];
+          const requiredColumns = ['Full Name', 'Pos', 'Previous Team', 'Nationality', 'Average Draft Ranking', 'Previous League'];
           const hasRequiredColumns = requiredColumns.every(col => result.meta.fields.includes(col));
           if (!hasRequiredColumns) {
             alert('CSV must include columns: ' + requiredColumns.join(', '));
@@ -155,8 +155,7 @@
           csvColumns = result.meta.fields;
           players = result.data.map(player => ({
             ...player,
-            Overall: parseInt(player.Overall) || 0,
-            Potential: parseInt(player.Potential) || 0,
+            'Average Draft Ranking': parseFloat(player['Average Draft Ranking']) || 999,
             Goals: parseInt(player.Goals) || 0,
             Assists: parseInt(player.Assists) || 0,
             Points: parseInt(player.Points) || 0,
@@ -184,7 +183,7 @@
           sortDirection *= -1;
         } else {
           sortColumn = column;
-          sortDirection = -1;
+          sortDirection = column === 'Average Draft Ranking' ? 1 : -1; // Default ascending for Average Draft Ranking
         }
         renderPlayerTable();
       });
@@ -249,6 +248,9 @@
       availablePlayers.sort((a, b) => {
         const aValue = a[sortColumn];
         const bValue = b[sortColumn];
+        if (sortColumn === 'Average Draft Ranking') {
+          return sortDirection * (aValue - bValue);
+        }
         if (typeof aValue === 'string') {
           return sortDirection * aValue.localeCompare(bValue);
         }
@@ -264,6 +266,8 @@
           <td class="p-2 relative group">
             ${player['Full Name']}
             <div class="absolute hidden group-hover:block bg-gray-800 text-white text-xs rounded p-2 z-10">
+              Average Draft Ranking: ${player['Average Draft Ranking']}<br>
+              Previous League: ${player['Previous League'] || 'N/A'}<br>
               Goals: ${player.Goals || 'N/A'}<br>
               Assists: ${player.Assists || 'N/A'}<br>
               Points: ${player.Points || 'N/A'}<br>
@@ -274,8 +278,8 @@
           <td class="p-2">${player.Pos}</td>
           <td class="p-2">${player['Previous Team']}</td>
           <td class="p-2">${player.Nationality}</td>
-          <td class="p-2">${player.Overall}</td>
-          <td class="p-2">${player.Potential}</td>
+          <td class="p-2">${player['Average Draft Ranking']}</td>
+          <td class="p-2">${player['Previous League'] || 'N/A'}</td>
           <td class="p-2">
             <button class="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 select-player" data-name="${player['Full Name']}">Select</button>
           </td>
