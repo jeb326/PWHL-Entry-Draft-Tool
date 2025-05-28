@@ -59,7 +59,6 @@
         file:mr-4 file:py-2 file:px-4 file:rounded file:border-0
         file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700
         hover:file:bg-blue-100">
-      <p class="text-sm text-gray-600 mt-2">Required columns: Full Name, Pos, Previous Team, Nationality, Average Draft Ranking, Previous League. Optional: Goals, Assists, Points, Save %, Shutouts.</p>
     </div>
 
     <!-- Draft Controls -->
@@ -70,6 +69,7 @@
       </div>
       <button id="resetDraft" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">Reset Draft</button>
       <button id="exportDraft" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" disabled>Export Draft Results</button>
+      <button id="exportUndrafted" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>Export Undrafted Players</button>
     </div>
 
     <!-- Player List -->
@@ -114,7 +114,38 @@
     </div>
   </div>
 
-  <script>
+  <script type="text/javascript">
+    var gk_isXlsx = false;
+    var gk_xlsxFileLookup = {};
+    var gk_fileData = {};
+    function filledCell(cell) {
+      return cell !== '' && cell != null;
+    }
+    function loadFileData(filename) {
+      if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+        try {
+          var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+          var firstSheetName = workbook.SheetNames[0];
+          var worksheet = workbook.Sheets[firstSheetName];
+          var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+          var filteredData = jsonData.filter(row => row.some(filledCell));
+          var headerRowIndex = filteredData.findIndex((row, index) =>
+            row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+          );
+          if (headerRowIndex === -1 || headerRowIndex > 25) {
+            headerRowIndex = 0;
+          }
+          var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+          csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+          return csv;
+        } catch (e) {
+          console.error(e);
+          return "";
+        }
+      }
+      return gk_fileData[filename] || "";
+    }
+
     // Draft state
     let players = [];
     let draftOrder = [
@@ -130,7 +161,7 @@
     let currentRound = 1;
     let currentPick = 1;
     let sortColumn = 'Average Draft Ranking';
-    let sortDirection = 1; // Ascending for lower rankings first
+    let sortDirection = 1;
     let csvColumns = [];
 
     // Initialize
@@ -159,10 +190,13 @@
             Goals: parseInt(player.Goals) || 0,
             Assists: parseInt(player.Assists) || 0,
             Points: parseInt(player.Points) || 0,
-            'Save %': parseFloat(player['Save %']) || 0,
-            Shutouts: parseInt(player.Shutouts) || 0
+            'Save Percentage': parseFloat(player['Save Percentage'] || player['Save %']) || 0,
+            GAA: parseFloat(player.GAA) || 0,
+            Wins: parseInt(player.Wins) || 0,
+            'Games Played': parseInt(player['Games Played']) || 0
           }));
           renderPlayerTable();
+          document.getElementById('exportUndrafted').disabled = false;
         },
         error: (error) => {
           alert('Error parsing CSV: ' + error.message);
@@ -183,7 +217,7 @@
           sortDirection *= -1;
         } else {
           sortColumn = column;
-          sortDirection = column === 'Average Draft Ranking' ? 1 : -1; // Default ascending for Average Draft Ranking
+          sortDirection = column === 'Average Draft Ranking' ? 1 : -1;
         }
         renderPlayerTable();
       });
@@ -200,10 +234,11 @@
         renderPlayerTable();
         document.getElementById('draftHistory').innerHTML = '';
         document.getElementById('exportDraft').disabled = true;
+        document.getElementById('exportUndrafted').disabled = players.length === 0;
       }
     });
 
-    // Export Draft
+    // Export Draft Results
     document.getElementById('exportDraft').addEventListener('click', () => {
       const totalPicks = draftOrder.reduce((sum, team) => sum + team.picks.length, 0);
       if (totalPicks === 0) {
@@ -221,7 +256,7 @@
             Team: team.team,
             Round: round,
             Pick: pickNumber,
-            DraftStatus: pickNumber === 48 ? 'Complete' : 'Incomplete',
+            DraftStatus: pickNumber <= 48 ? 'Complete' : 'Incomplete',
             ...player
           };
           rows.push(row);
@@ -233,6 +268,22 @@
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = 'pwhl_entry_draft_results.csv';
+      link.click();
+    });
+
+    // Export Undrafted Players
+    document.getElementById('exportUndrafted').addEventListener('click', () => {
+      const undraftedPlayers = players.filter(player => !draftOrder.some(team => team.picks.includes(player)));
+      if (undraftedPlayers.length === 0) {
+        alert('No undrafted players to export.');
+        return;
+      }
+
+      const csv = Papa.unparse(undraftedPlayers, { columns: csvColumns });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'pwhl_undrafted_players.csv';
       link.click();
     });
 
@@ -271,8 +322,10 @@
               Goals: ${player.Goals || 'N/A'}<br>
               Assists: ${player.Assists || 'N/A'}<br>
               Points: ${player.Points || 'N/A'}<br>
-              Save %: ${player['Save %'] || 'N/A'}<br>
-              Shutouts: ${player.Shutouts || 'N/A'}
+              Save Percentage: ${player['Save Percentage'] || 'N/A'}<br>
+              GAA: ${player.GAA || 'N/A'}<br>
+              Wins: ${player.Wins || 'N/A'}<br>
+              Games Played: ${player['Games Played'] || 'N/A'}
             </div>
           </td>
           <td class="p-2">${player.Pos}</td>
@@ -281,7 +334,7 @@
           <td class="p-2">${player['Average Draft Ranking']}</td>
           <td class="p-2">${player['Previous League'] || 'N/A'}</td>
           <td class="p-2">
-            <button class="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 select-player" data-name="${player['Full Name']}">Select</button>
+            <button class="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 select-player" data-name="${player['Full Name']}" ${currentPick > 48 ? 'disabled' : ''}>Select</button>
           </td>
         `;
         tbody.appendChild(tr);
@@ -290,6 +343,7 @@
       // Add Select Player Events
       document.querySelectorAll('.select-player').forEach(button => {
         button.addEventListener('click', () => {
+          if (currentPick > 48) return;
           const playerName = button.dataset.name;
           const player = players.find(p => p['Full Name'] === playerName);
           const teamIndex = (currentPick - 1) % 8;
@@ -308,7 +362,7 @@
           // Advance Pick
           currentPick++;
           if (currentPick > 48) {
-            alert('Draft complete!');
+            alert('Draft complete! Maximum 48 picks reached.');
             document.querySelectorAll('.select-player').forEach(btn => btn.disabled = true);
           } else {
             updateCurrentPick();
@@ -322,6 +376,10 @@
 
     // Update Current Pick Display
     function updateCurrentPick() {
+      if (currentPick > 48) {
+        document.getElementById('currentPick').textContent = 'Draft Complete';
+        return;
+      }
       const pickNumber = currentPick;
       const round = Math.ceil(pickNumber / 8);
       const teamIndex = (pickNumber - 1) % 8;
