@@ -42,46 +42,55 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PWHL Entry Draft Simulator</title>
+  <title>PWHL Entry Draft Simulator 2025</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 </head>
 <body class="bg-gray-100 font-sans">
-  <div class="container mx-auto p-4 max-w-6xl">
+  <div class="container mx-auto p-4 max-w-7xl">
     <!-- Header -->
     <h1 class="text-3xl font-bold text-center mb-6">PWHL Entry Draft Simulator 2025</h1>
-    <p class="text-center mb-4">Simulate the 2025 PWHL Entry Draft for 8 teams over 6 rounds. Upload a CSV of eligible players, select picks, and export the results.</p>
+    <p class="text-center mb-4">Upload a player list CSV and simulate the PWHL draft for the 2025 season. Select players for each team and export the draft results and undrafted players.</p>
 
     <!-- CSV Upload -->
     <div class="mb-6">
-      <label class="block text-lg font-semibold mb-2">Upload Player CSV</label>
-      <input type="file" id="csvFile" accept=".csv" class="block w-full text-sm text-gray-500
+      <label class="block text-lg font-semibold mb-2">Player List CSV</label>
+      <input type="file" id="playerFile" accept=".csv" class="block w-full text-sm text-gray-500
         file:mr-4 file:py-2 file:px-4 file:rounded file:border-0
         file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700
         hover:file:bg-blue-100">
+      <p class="text-sm text-gray-600 mt-2">Required columns: Full Name, Pos, Previous Team, Nationality, Average Draft Ranking, Previous League</p>
     </div>
 
     <!-- Draft Controls -->
-    <div class="mb-6 flex flex-wrap gap-4 items-center">
-      <div>
-        <span class="font-semibold">Current Pick: </span>
-        <span id="currentPick" class="text-blue-600">Round 1, Pick 1 (New York)</span>
+    <div class="mb-6 flex flex-col sm:flex-row gap-4 items-center">
+      <div class="flex gap-2">
+        <button id="startDraft" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600" disabled>Start Draft</button>
+        <button id="resetDraft" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600" disabled>Reset Draft</button>
       </div>
-      <button id="resetDraft" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">Reset Draft</button>
-      <button id="exportDraft" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" disabled>Export Draft Results</button>
-      <button id="exportUndrafted" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600" disabled>Export Undrafted Players</button>
+      <div class="flex gap-2">
+        <label class="text-sm font-semibold">Current Team:</label>
+        <span id="currentTeam" class="text-sm">-</span>
+        <label class="text-sm font-semibold ml-4">Pick:</label>
+        <span id="currentPick" class="text-sm">-</span>
+      </div>
     </div>
 
-    <!-- Player List -->
+    <!-- Available Players -->
     <div class="mb-6">
       <h2 class="text-xl font-semibold mb-2">Available Players</h2>
-      <div class="mb-4 flex gap-4">
+      <div class="mb-4 flex gap-4 items-center">
         <select id="positionFilter" class="border rounded px-2 py-1">
           <option value="">All Positions</option>
           <option value="Forward">Forward</option>
           <option value="Defender">Defender</option>
           <option value="Goaltender">Goaltender</option>
         </select>
+        <div id="pagination" class="flex gap-2 items-center">
+          <button id="prevPage" class="px-3 py-1 bg-gray-300 rounded hover:bg-gray-400 disabled:opacity-50" disabled>Previous</button>
+          <span id="pageInfo" class="text-sm"></span>
+          <button id="nextPage" class="px-3 py-1 bg-gray-300 rounded hover:bg-gray-400 disabled:opacity-50" disabled>Next</button>
+        </div>
       </div>
       <div class="overflow-x-auto">
         <table id="playerTable" class="w-full bg-white shadow rounded">
@@ -91,9 +100,9 @@
               <th class="p-2 cursor-pointer" data-sort="Pos">Pos</th>
               <th class="p-2 cursor-pointer" data-sort="Previous Team">Previous Team</th>
               <th class="p-2 cursor-pointer" data-sort="Nationality">Nationality</th>
-              <th class="p-2 cursor-pointer" data-sort="Average Draft Ranking">Average Draft Ranking</th>
+              <th class="p-2 cursor-pointer" data-sort="Average Draft Ranking">Draft Rank</th>
               <th class="p-2 cursor-pointer" data-sort="Previous League">Previous League</th>
-              <th class="p-2">Action</th>
+              <th class="p-2">Select</th>
             </tr>
           </thead>
           <tbody id="playerTableBody"></tbody>
@@ -101,16 +110,32 @@
       </div>
     </div>
 
-    <!-- Team Rosters -->
+    <!-- Draft Results -->
     <div class="mb-6">
-      <h2 class="text-xl font-semibold mb-2">Team Rosters</h2>
-      <div id="teamRosters" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+      <h2 class="text-xl font-semibold mb-2">Draft Results</h2>
+      <div class="overflow-x-auto">
+        <table id="draftResultsTable" class="w-full bg-white shadow rounded">
+          <thead>
+            <tr class="bg-gray-200">
+              <th class="p-2">Pick</th>
+              <th class="p-2">Team</th>
+              <th class="p-2">Full Name</th>
+              <th class="p-2">Pos</th>
+              <th class="p-2">Previous Team</th>
+              <th class="p-2">Nationality</th>
+              <th class="p-2">Draft Rank</th>
+              <th class="p-2">Previous League</th>
+            </tr>
+          </thead>
+          <tbody id="draftResultsTableBody"></tbody>
+        </table>
+      </div>
     </div>
 
-    <!-- Draft History -->
-    <div>
-      <h2 class="text-xl font-semibold mb-2">Draft History</h2>
-      <ul id="draftHistory" class="bg-white p-4 rounded shadow"></ul>
+    <!-- Export Buttons -->
+    <div class="mb-6 flex gap-4">
+      <button id="exportResults" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" disabled>Export Draft Results</button>
+      <button id="exportUndrafted" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600" disabled>Export Undrafted Players</button>
     </div>
   </div>
 
@@ -119,7 +144,7 @@
     var gk_xlsxFileLookup = {};
     var gk_fileData = {};
     function filledCell(cell) {
-      return cell !== '' && cell != null;
+      return cell !== '' && cell !== null;
     }
     function loadFileData(filename) {
       if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
@@ -146,67 +171,103 @@
       return gk_fileData[filename] || "";
     }
 
-    // Draft state
-    let players = [];
-    let draftOrder = [
-      { team: 'New York', picks: [] },
-      { team: 'Ottawa', picks: [] },
-      { team: 'Minnesota', picks: [] },
-      { team: 'Boston', picks: [] },
-      { team: 'Montreal', picks: [] },
-      { team: 'Toronto', picks: [] },
-      { team: 'Seattle', picks: [] },
-      { team: 'Vancouver', picks: [] }
+    // State
+    const teams = ['Boston', 'Minnesota', 'Montreal', 'New York', 'Ottawa', 'Toronto', 'Seattle', 'Vancouver'];
+    const draftOrder = [
+      'Vancouver', 'Seattle', 'Ottawa', 'Toronto', 'New York', 'Montreal', 'Minnesota', 'Boston', // Round 1
+      'Boston', 'Minnesota', 'Montreal', 'New York', 'Toronto', 'Ottawa', 'Seattle', 'Vancouver', // Round 2
+      'Vancouver', 'Seattle', 'Ottawa', 'Toronto', 'New York', 'Montreal', 'Minnesota', 'Boston', // Round 3
+      'Boston', 'Minnesota', 'Montreal', 'New York', 'Toronto', 'Ottawa', 'Seattle', 'Vancouver', // Round 4
+      'Vancouver', 'Seattle', 'Ottawa', 'Toronto', 'New York', 'Montreal', 'Minnesota', 'Boston', // Round 5
+      'Boston', 'Minnesota', 'Montreal', 'New York', 'Toronto', 'Ottawa', 'Seattle', 'Vancouver', // Round 6
+      'Vancouver', 'Seattle', 'Ottawa', 'Toronto', 'New York', 'Montreal', 'Minnesota', 'Boston'  // Round 7
     ];
-    let currentRound = 1;
-    let currentPick = 1;
+    let players = [];
+    let draftResults = [];
+    let currentPick = 0;
     let sortColumn = 'Average Draft Ranking';
     let sortDirection = 1;
-    let csvColumns = [];
+    let playerColumns = [];
+    let currentPage = 1;
+    const rowsPerPage = 25;
 
     // Initialize
-    updateCurrentPick();
-    renderTeamRosters();
+    document.getElementById('playerFile').addEventListener('change', handlePlayerUpload);
 
-    // CSV Upload
-    document.getElementById('csvFile').addEventListener('change', (e) => {
+    // CSV Upload Handler
+    function handlePlayerUpload(e) {
       const file = e.target.files[0];
       if (!file) return;
 
       Papa.parse(file, {
         header: true,
+        skipEmptyLines: true,
         complete: (result) => {
           const requiredColumns = ['Full Name', 'Pos', 'Previous Team', 'Nationality', 'Average Draft Ranking', 'Previous League'];
           const hasRequiredColumns = requiredColumns.every(col => result.meta.fields.includes(col));
           if (!hasRequiredColumns) {
-            alert('CSV must include columns: ' + requiredColumns.join(', '));
+            alert(`CSV must include columns: ${requiredColumns.join(', ')}`);
             return;
           }
-
-          csvColumns = result.meta.fields;
-          players = result.data.map(player => ({
-            ...player,
-            'Average Draft Ranking': parseFloat(player['Average Draft Ranking']) || 999,
-            Goals: parseInt(player.Goals) || 0,
-            Assists: parseInt(player.Assists) || 0,
-            Points: parseInt(player.Points) || 0,
-            'Save Percentage': parseFloat(player['Save Percentage'] || player['Save %']) || 0,
-            GAA: parseFloat(player.GAA) || 0,
-            Wins: parseInt(player.Wins) || 0,
-            'Games Played': parseInt(player['Games Played']) || 0
+          players = result.data.map(rowData => ({
+            ...rowData,
+            'Average Draft Ranking': rowData['Average Draft Ranking'] === null || rowData['Average Draft Ranking'] === '' ? '' : parseFloat(rowData['Average Draft Ranking']) || '',
+            Goals: parseInt(rowData.Goals) || 0,
+            Assists: parseInt(rowData.Assists) || 0,
+            Points: parseInt(rowData.Points) || 0,
+            'Save Percentage': parseFloat(rowData['Save Percentage'] || rowData['Save %']) || 0,
+            GAA: parseFloat(rowData.GAA) || 0,
+            Wins: parseInt(rowData.Wins) || 0,
+            'Games Played': parseInt(rowData['Games Played']) || 0
           }));
-          renderPlayerTable();
-          document.getElementById('exportUndrafted').disabled = false;
+          playerColumns = result.meta.fields;
+          document.getElementById('startDraft').disabled = false;
+          currentPage = 1; // Reset to first page
+          renderAvailablePlayers();
         },
         error: (error) => {
-          alert('Error parsing CSV: ' + error.message);
+          alert(`Error parsing CSV: ${error.message}`);
         }
       });
+    }
+
+    // Start Draft
+    document.getElementById('startDraft').addEventListener('click', () => {
+      if (players.length === 0) {
+        alert('Please upload a player list first.');
+        return;
+      }
+      currentPick = 0;
+      draftResults = [];
+      document.getElementById('startDraft').disabled = true;
+      document.getElementById('resetDraft').disabled = false;
+      document.getElementById('exportResults').disabled = false;
+      document.getElementById('exportUndrafted').disabled = false;
+      updateDraftStatus();
+      renderAvailablePlayers();
+      renderDraftResults();
+    });
+
+    // Reset Draft
+    document.getElementById('resetDraft').addEventListener('click', () => {
+      if (confirm('Reset the draft? This will clear all selections.')) {
+        currentPick = 0;
+        draftResults = [];
+        document.getElementById('startDraft').disabled = false;
+        document.getElementById('resetDraft').disabled = true;
+        document.getElementById('exportResults').disabled = true;
+        document.getElementById('exportUndrafted').disabled = true;
+        currentPage = 1; // Reset to first page
+        updateDraftStatus();
+        renderAvailablePlayers();
+        renderDraftResults();
+      }
     });
 
     // Position Filter
     document.getElementById('positionFilter').addEventListener('change', () => {
-      renderPlayerTable();
+      currentPage = 1; // Reset to first page
+      renderAvailablePlayers();
     });
 
     // Table Sorting
@@ -219,106 +280,74 @@
           sortColumn = column;
           sortDirection = column === 'Average Draft Ranking' ? 1 : -1;
         }
-        renderPlayerTable();
+        currentPage = 1; // Reset to first page
+        renderAvailablePlayers();
       });
     });
 
-    // Reset Draft
-    document.getElementById('resetDraft').addEventListener('click', () => {
-      if (confirm('Reset the draft? All picks will be cleared.')) {
-        draftOrder.forEach(team => (team.picks = []));
-        currentRound = 1;
-        currentPick = 1;
-        updateCurrentPick();
-        renderTeamRosters();
-        renderPlayerTable();
-        document.getElementById('draftHistory').innerHTML = '';
-        document.getElementById('exportDraft').disabled = true;
-        document.getElementById('exportUndrafted').disabled = players.length === 0;
+    // Pagination Controls
+    document.getElementById('prevPage').addEventListener('click', () => {
+      if (currentPage > 1) {
+        currentPage--;
+        renderAvailablePlayers();
       }
     });
 
-    // Export Draft Results
-    document.getElementById('exportDraft').addEventListener('click', () => {
-      const totalPicks = draftOrder.reduce((sum, team) => sum + team.picks.length, 0);
-      if (totalPicks === 0) {
-        alert('No players have been drafted yet.');
-        return;
-      }
-
-      const rows = [];
-      let pickNumber = 0;
-      draftOrder.forEach(team => {
-        team.picks.forEach(player => {
-          pickNumber++;
-          const round = Math.floor((pickNumber - 1) / 8) + 1;
-          const row = {
-            Team: team.team,
-            Round: round,
-            Pick: pickNumber,
-            DraftStatus: pickNumber <= 48 ? 'Complete' : 'Incomplete',
-            ...player
-          };
-          rows.push(row);
-        });
-      });
-
-      const csv = Papa.unparse(rows, { columns: ['Team', 'Round', 'Pick', 'DraftStatus', ...csvColumns] });
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = 'pwhl_entry_draft_results.csv';
-      link.click();
-    });
-
-    // Export Undrafted Players
-    document.getElementById('exportUndrafted').addEventListener('click', () => {
-      const undraftedPlayers = players.filter(player => !draftOrder.some(team => team.picks.includes(player)));
-      if (undraftedPlayers.length === 0) {
-        alert('No undrafted players to export.');
-        return;
-      }
-
-      const csv = Papa.unparse(undraftedPlayers, { columns: csvColumns });
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = 'pwhl_undrafted_players.csv';
-      link.click();
-    });
-
-    // Render Player Table
-    function renderPlayerTable() {
+    document.getElementById('nextPage').addEventListener('click', () => {
       const positionFilter = document.getElementById('positionFilter').value;
       const availablePlayers = players.filter(player => {
-        const isAvailable = !draftOrder.some(team => team.picks.includes(player));
+        const isAvailable = !draftResults.some(result => result['Full Name'] === player['Full Name']);
+        const matchesPosition = !positionFilter || player.Pos === positionFilter;
+        return isAvailable && matchesPosition;
+      });
+      const totalPages = Math.ceil(availablePlayers.length / rowsPerPage);
+      if (currentPage < totalPages) {
+        currentPage++;
+        renderAvailablePlayers();
+      }
+    });
+
+    // Render Available Players
+    function renderAvailablePlayers() {
+      const positionFilter = document.getElementById('positionFilter').value;
+      const availablePlayers = players.filter(player => {
+        const isAvailable = !draftResults.some(result => result['Full Name'] === player['Full Name']);
         const matchesPosition = !positionFilter || player.Pos === positionFilter;
         return isAvailable && matchesPosition;
       });
 
       availablePlayers.sort((a, b) => {
+        if (sortColumn === 'Average Draft Ranking') {
+          const aRank = a['Average Draft Ranking'];
+          const bRank = b['Average Draft Ranking'];
+          if (aRank === '' && bRank === '') return 0;
+          if (aRank === '') return sortDirection * 1;
+          if (bRank === '') return sortDirection * -1;
+          return sortDirection * (aRank - bRank);
+        }
         const aValue = a[sortColumn];
         const bValue = b[sortColumn];
-        if (sortColumn === 'Average Draft Ranking') {
-          return sortDirection * (aValue - bValue);
-        }
         if (typeof aValue === 'string') {
           return sortDirection * aValue.localeCompare(bValue);
         }
-        return sortDirection * (bValue - aValue);
+        return sortDirection * (aValue - bValue);
       });
+
+      const totalPages = Math.ceil(availablePlayers.length / rowsPerPage);
+      currentPage = Math.min(currentPage, totalPages || 1);
+      const startIndex = (currentPage - 1) * rowsPerPage;
+      const endIndex = startIndex + rowsPerPage;
+      const paginatedPlayers = availablePlayers.slice(startIndex, endIndex);
 
       const tbody = document.getElementById('playerTableBody');
       tbody.innerHTML = '';
-      availablePlayers.forEach(player => {
+      paginatedPlayers.forEach(player => {
         const tr = document.createElement('tr');
         tr.className = 'border-t';
         tr.innerHTML = `
           <td class="p-2 relative group">
             ${player['Full Name']}
             <div class="absolute hidden group-hover:block bg-gray-800 text-white text-xs rounded p-2 z-10">
-              Average Draft Ranking: ${player['Average Draft Ranking']}<br>
-              Previous League: ${player['Previous League'] || 'N/A'}<br>
               Goals: ${player.Goals || 'N/A'}<br>
               Assists: ${player.Assists || 'N/A'}<br>
               Points: ${player.Points || 'N/A'}<br>
@@ -331,78 +360,100 @@
           <td class="p-2">${player.Pos}</td>
           <td class="p-2">${player['Previous Team']}</td>
           <td class="p-2">${player.Nationality}</td>
-          <td class="p-2">${player['Average Draft Ranking']}</td>
-          <td class="p-2">${player['Previous League'] || 'N/A'}</td>
+          <td class="p-2">${player['Average Draft Ranking'] === '' ? '' : player['Average Draft Ranking']}</td>
+          <td class="p-2">${player['Previous League']}</td>
           <td class="p-2">
-            <button class="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 select-player" data-name="${player['Full Name']}" ${currentPick > 48 ? 'disabled' : ''}>Select</button>
+            <button class="select-player bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600" data-name="${player['Full Name']}" ${currentPick >= draftOrder.length ? 'disabled' : ''}>
+              Select
+            </button>
           </td>
         `;
         tbody.appendChild(tr);
       });
 
+      // Update Pagination Controls
+      document.getElementById('prevPage').disabled = currentPage === 1;
+      document.getElementById('nextPage').disabled = currentPage === totalPages;
+      document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages || 1}`;
+
       // Add Select Player Events
       document.querySelectorAll('.select-player').forEach(button => {
         button.addEventListener('click', () => {
-          if (currentPick > 48) return;
+          if (currentPick >= draftOrder.length) return;
           const playerName = button.dataset.name;
           const player = players.find(p => p['Full Name'] === playerName);
-          const teamIndex = (currentPick - 1) % 8;
-          const team = draftOrder[teamIndex];
-
-          team.picks.push(player);
-          document.getElementById('exportDraft').disabled = false;
-
-          // Update Draft History
-          const pickNumber = currentPick;
-          const round = Math.ceil(pickNumber / 8);
-          const historyItem = document.createElement('li');
-          historyItem.textContent = `Round ${round}, Pick ${pickNumber}: ${team.team} selects ${player['Full Name']} (${player.Pos})`;
-          document.getElementById('draftHistory').prepend(historyItem);
-
-          // Advance Pick
+          draftResults.push({
+            Pick: currentPick + 1,
+            Team: draftOrder[currentPick],
+            ...player
+          });
           currentPick++;
-          if (currentPick > 48) {
-            alert('Draft complete! Maximum 48 picks reached.');
-            document.querySelectorAll('.select-player').forEach(btn => btn.disabled = true);
-          } else {
-            updateCurrentPick();
-          }
-
-          renderPlayerTable();
-          renderTeamRosters();
+          updateDraftStatus();
+          renderAvailablePlayers();
+          renderDraftResults();
         });
       });
     }
 
-    // Update Current Pick Display
-    function updateCurrentPick() {
-      if (currentPick > 48) {
-        document.getElementById('currentPick').textContent = 'Draft Complete';
-        return;
-      }
-      const pickNumber = currentPick;
-      const round = Math.ceil(pickNumber / 8);
-      const teamIndex = (pickNumber - 1) % 8;
-      const team = draftOrder[teamIndex].team;
-      document.getElementById('currentPick').textContent = `Round ${round}, Pick ${pickNumber} (${team})`;
+    // Update Draft Status
+    function updateDraftStatus() {
+      const teamDisplay = currentPick < draftOrder.length ? draftOrder[currentPick] : 'Draft Complete';
+      const pickDisplay = currentPick < draftOrder.length ? `Round ${Math.floor(currentPick / teams.length) + 1}, Pick ${currentPick % teams.length + 1}` : '-';
+      document.getElementById('currentTeam').textContent = teamDisplay;
+      document.getElementById('currentPick').textContent = pickDisplay;
     }
 
-    // Render Team Rosters
-    function renderTeamRosters() {
-      const container = document.getElementById('teamRosters');
-      container.innerHTML = '';
-      draftOrder.forEach(team => {
-        const div = document.createElement('div');
-        div.className = 'bg-white p-4 rounded shadow';
-        div.innerHTML = `
-          <h3 class="text-lg font-semibold mb-2">${team.team}</h3>
-          <ul class="list-disc pl-5">
-            ${team.picks.length ? team.picks.map(player => `<li>${player['Full Name']} (${player.Pos})</li>`).join('') : '<li>No players drafted yet</li>'}
-          </ul>
+    // Render Draft Results
+    function renderDraftResults() {
+      const tbody = document.getElementById('draftResultsTableBody');
+      tbody.innerHTML = '';
+      draftResults.forEach(result => {
+        const tr = document.createElement('tr');
+        tr.className = 'border-t';
+        tr.innerHTML = `
+          <td class="p-2">${result.Pick}</td>
+          <td class="p-2">${result.Team}</td>
+          <td class="p-2">${result['Full Name']}</td>
+          <td class="p-2">${result.Pos}</td>
+          <td class="p-2">${result['Previous Team']}</td>
+          <td class="p-2">${result.Nationality}</td>
+          <td class="p-2">${result['Average Draft Ranking'] === '' ? '' : result['Average Draft Ranking']}</td>
+          <td class="p-2">${result['Previous League']}</td>
         `;
-        container.appendChild(div);
+        tbody.appendChild(tr);
       });
     }
+
+    // Export Draft Results
+    document.getElementById('exportResults').addEventListener('click', () => {
+      if (draftResults.length === 0) {
+        alert('No draft results to export.');
+        return;
+      }
+      const columns = ['Pick', 'Team', 'Full Name', 'Pos', 'Previous Team', 'Nationality', 'Average Draft Ranking', 'Previous League', ...playerColumns.filter(c => !['Pick', 'Team'].includes(c))];
+      const csv = Papa.unparse(draftResults, { columns });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'pwhl_draft_results.csv';
+      link.click();
+    });
+
+    // Export Undrafted Players
+    document.getElementById('exportUndrafted').addEventListener('click', () => {
+      const undrafted = players.filter(player => !draftResults.some(result => result['Full Name'] === player['Full Name']));
+      if (undrafted.length === 0) {
+        alert('No undrafted players to export.');
+        return;
+      }
+      const columns = ['Full Name', 'Pos', 'Previous Team', 'Nationality', 'Average Draft Ranking', 'Previous League', ...playerColumns.filter(c => !['Pick', 'Team'].includes(c))];
+      const csv = Papa.unparse(undrafted, { columns });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'pwhl_undrafted_players.csv';
+      link.click();
+    });
   </script>
 </body>
 </html>
